@@ -20,5 +20,26 @@
       ],
       "versioningTemplate": "{{#if versioning}}{{versioning}}{{else}}semver{{/if}}"
     }
+  ],
+  "packageRules": [
+    {
+      "description": "Automerge non-major updates",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": true,
+      "automergeStrategy": "rebase",
+      "automergeType": "branch"
+    },
+    {
+      "description": "Use ci semantic type for some deps",
+      "matchFileNames": [".github/workflows/**"],
+      "semanticCommitType": "ci"
+    },
+    {
+      "description": "Update the Renovate GitHub action weekly with fix type",
+      "extends": [":semanticCommitType(fix)"],
+      "matchPackageNames": "renovatebot/github-action",
+      "semanticCommitType": "ci",
+      "schedule": ["on Monday"]
+    }
   ]
 }
