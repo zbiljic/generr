@@ -36,7 +36,7 @@ gofmt: ## Format Go code
 lint: lint-deps
 lint: ## Lint the source code
 	@echo "==> Linting source code..."
-	@$(GOLANGCI_LINT) run --config=.golangci.yml --concurrency 1 --fix
+	@$(GOLANGCI_LINT) run --config=.golangci.yml --fix
 
 	@echo "==> Checking Go mod..."
 	@$(MAKE) tidy
