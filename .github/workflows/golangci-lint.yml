@@ -4,28 +4,35 @@ on:
   push:
     branches:
       - main
+      - renovate/**
     tags:
       - v*
+    paths-ignore:
+      - "**.md"
   pull_request:
+    paths-ignore:
+      - "**.md"
 
 permissions:
   contents: read
   pull-requests: read
 
 env:
-  GO_VERSION: 1.21.1
-  GOLANGCI_LINT_VERSION: 1.54.2
+  # renovate: datasource=golang-version depName=go
+  GO_VERSION: 1.24.1
+  # renovate: datasource=github-releases depName=golangci/golangci-lint
+  GOLANGCI_LINT_VERSION: v1.64.5
 
 jobs:
   golangci:
     name: lint
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     steps:
-      - uses: actions/checkout@v4.2.2
-      - uses: actions/setup-go@v5.3.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6.5.0
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: v${{ env.GOLANGCI_LINT_VERSION }}
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
