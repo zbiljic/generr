@@ -13,14 +13,22 @@ else
 VERBOSE="true"
 endif
 
-include tools/tools.mk
-
 # include per-user customization after all variables are defined
 -include Makefile.local
 
+.PHONY: tools
+tools:
+	@command -v mise >/dev/null 2>&1 || { \
+	  echo >&2 "Error: 'mise' not found in your PATH."; \
+	  echo >&2 "Quick-install: 'curl https://mise.run | sh'"; \
+	  echo >&2 "Full install instructions: https://mise.jdx.dev/installing-mise.html"; \
+	  exit 1; \
+	}
+
 # Only for CI compliance
 .PHONY: bootstrap
-bootstrap: lint-deps # Install all dependencies
+bootstrap: tools # Install all dependencies
+	@mise install
 
 .PHONY: tidy
 tidy: TIDY_CMD=go mod tidy
@@ -28,15 +36,15 @@ tidy:
 	@$(TIDY_CMD)
 
 .PHONY: gofmt
-gofmt: lint-deps
+gofmt: tools
 gofmt: ## Format Go code
-	@$(GOFUMPT) -extra -l -w .
+	@mise x -- gofumpt -extra -l -w .
 
 .PHONY: lint
-lint: lint-deps
+lint: tools
 lint: ## Lint the source code
 	@echo "==> Linting source code..."
-	@$(GOLANGCI_LINT) run --config=.golangci.yml --fix
+	@mise x -- golangci-lint run --config=.golangci.yml --fix
 
 	@echo "==> Checking Go mod..."
 	@$(MAKE) tidy
