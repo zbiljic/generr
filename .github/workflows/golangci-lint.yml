@@ -17,22 +17,23 @@ permissions:
   contents: read
   pull-requests: read
 
-env:
-  # renovate: datasource=golang-version depName=go
-  GO_VERSION: 1.24.5
-  # renovate: datasource=github-releases depName=golangci/golangci-lint
-  GOLANGCI_LINT_VERSION: v2.3.0
-
 jobs:
   golangci:
     name: lint
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set Github ENV variables
+        shell: bash
+        run: |
+          echo "GO_VERSION=$( (grep -m1 '^toolchain go' go.mod || grep -m1 '^go ' go.mod) | sed -nE 's/.*go[[:space:]]*//p')" >> $GITHUB_ENV
+          echo "GOLANGCI_LINT_VERSION=$(cat mise.toml | sed -En 's/golangci-lint.+"(.*)"/\1/p')" >> $GITHUB_ENV
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          version: v${{ env.GOLANGCI_LINT_VERSION }}
