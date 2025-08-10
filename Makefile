@@ -16,6 +16,26 @@ endif
 # include per-user customization after all variables are defined
 -include Makefile.local
 
+HELP_FORMAT="    \033[36m%-20s\033[0m %s\n"
+.PHONY: help
+help: ## Display this usage information
+	@echo "Valid targets:"
+	@{ \
+		echo $(MAKEFILE_LIST) \
+			| xargs grep -E '^[^ \$$]+:.*?## .*$$' -h \
+		; \
+		echo $(MAKEFILE_LIST) \
+			| xargs cat 2> /dev/null \
+			| sed -e 's/$\(eval/$\(info/' \
+			| make -f- 2> /dev/null \
+			| grep -E '^[^ ]+:.*?## .*$$' -h \
+		; \
+	} \
+		| sort \
+		| awk 'BEGIN {FS = ":.*?## "}; \
+			{printf $(HELP_FORMAT), $$1, $$2}'
+	@echo ""
+
 .PHONY: tools
 tools:
 	@command -v mise >/dev/null 2>&1 || { \
@@ -30,10 +50,17 @@ tools:
 bootstrap: tools # Install all dependencies
 	@mise install
 
+GO_VERSION := $(shell go mod edit -json | sed -En 's/"Go": "([^"]*).*/\1/p' | tr -d '[:blank:]')
+
+GO_MOD_TIDY_CMD   := go mod tidy -compat=$(GO_VERSION)
+GO_MOD_TIDY_E_CMD := go mod tidy -e -compat=$(GO_VERSION)
+
+.PHONY: go-mod-tidy
+go-mod-tidy:
+	@cd $(PROJECT_ROOT) && $(GO_MOD_TIDY_E_CMD) && $(GO_MOD_TIDY_CMD)
+
 .PHONY: tidy
-tidy: TIDY_CMD=go mod tidy
-tidy:
-	@$(TIDY_CMD)
+tidy: go-mod-tidy
 
 .PHONY: gofmt
 gofmt: tools
@@ -46,6 +73,8 @@ lint: ## Lint the source code
 	@echo "==> Linting source code..."
 	@mise x -- golangci-lint run --config=.golangci.yml --fix
 
+.PHONY: check-mod
+check-mod:
 	@echo "==> Checking Go mod..."
 	@$(MAKE) tidy
 	@if (git status --porcelain | grep -Eq "go\.(mod|sum)"); then \
@@ -76,20 +105,10 @@ install-$(PROJECT_NAME):
 		go install .; \
 	fi;
 
+.PHONY: pre-commit
+pre-commit: gofmt lint check-mod
+
 .PHONY: clean
 clean: ## Remove build artifacts
 	@echo "==> Removing build artifacts..."
 	@rm -f $(if $(VERBOSE),-v) "$(GOPATH)/bin/$(PROJECT_NAME)"
-
-HELP_FORMAT="    \033[36m%-15s\033[0m %s\n"
-.PHONY: help
-help: ## Display this usage information
-	@echo "Valid targets:"
-	@echo $(MAKEFILE_LIST) | \
-		xargs grep -E '^[^ ]+:.*?## .*$$' -h | \
-		sort | \
-		awk 'BEGIN {FS = ":.*?## "}; \
-			{printf $(HELP_FORMAT), $$1, $$2}'
-	@echo ""
-
-FORCE:
