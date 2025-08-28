@@ -23,6 +23,7 @@ var (
 	output     = flag.String("output", "", "output file name; default srcdir/<type>_generr.go")
 	trimprefix = flag.String("trimprefix", "", "trim the `prefix` from the generated constant namespace")
 	buildTags  = flag.String("tags", "", "comma-separated list of build tags to apply")
+	exported   = flag.Bool("exported", false, "generate error functions only for exported methods")
 )
 
 // Usage is a replacement usage function for the flags package.
@@ -59,7 +60,8 @@ func main() {
 	// Parse the package once.
 	var dir string
 	g := Generator{
-		trimPrefix: *trimprefix,
+		trimPrefix:   *trimprefix,
+		exportedOnly: *exported,
 	}
 	if len(args) == 1 && isDirectory(args[0]) {
 		dir = args[0]
@@ -114,7 +116,8 @@ type Generator struct {
 	buf bytes.Buffer // Accumulated output.
 	pkg *Package     // Package we are scanning.
 
-	trimPrefix string
+	trimPrefix   string
+	exportedOnly bool
 
 	logf func(format string, args ...interface{}) // test logging hook; nil when not testing
 }
@@ -128,8 +131,9 @@ type File struct {
 	pkg  *Package  // Package to which this file belongs.
 	file *ast.File // Parsed AST.
 	// These fields are reset for each type being generated.
-	typeName  string     // Name of the struct type.
-	functions []Function // Accumulator for functions of that struct.
+	typeName     string     // Name of the struct type.
+	functions    []Function // Accumulator for functions of that struct.
+	exportedOnly bool       // Whether to generate only for exported methods.
 }
 
 type Package struct {
@@ -202,6 +206,7 @@ func (g *Generator) generate(typeName string) {
 		// Set the state for this run of the walker.
 		file.typeName = typeName
 		file.functions = nil
+		file.exportedOnly = g.exportedOnly
 		if file.file != nil {
 			ast.Inspect(file.file, file.funcDecl)
 			functions = append(functions, file.functions...)
@@ -384,6 +389,11 @@ func (f *File) funcDecl(node ast.Node) bool {
 
 		if strings.HasPrefix(name, "err") {
 			// Do not create for error functions.
+			continue
+		}
+
+		// skip unexported functions when 'exported' flag is set
+		if f.exportedOnly && len(name) > 0 && unicode.IsLower(rune(name[0])) {
 			continue
 		}
 
