@@ -405,6 +405,11 @@ func (f *File) funcDecl(node ast.Node) bool {
 			}
 		}
 
+		// check if function should be skipped
+		if len(fn.opts) == 1 && strings.TrimSpace(fn.opts[0]) == "skip" {
+			return true
+		}
+
 		f.functions = append(f.functions, fn)
 	}
 
