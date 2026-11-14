@@ -1,6 +1,4 @@
 version: "2"
-run:
-  issues-exit-code: 0
 output:
   formats:
     text:
