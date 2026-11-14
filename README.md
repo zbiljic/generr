@@ -70,14 +70,16 @@ import "fmt"
 
 // errDoSomething is an error function generated for MyService.DoSomething
 func (*MyService) errDoSomething(err error) error {
-	return fmt.Errorf("mypackage.DoSomething: %w", err)
+	return fmt.Errorf("%s: %w", "mypackage.DoSomething", err)
 }
 
 // errAnotherAction is an error function generated for MyService.AnotherAction
 func (*MyService) errAnotherAction(err error) error {
-	return fmt.Errorf("mypackage.AnotherAction: %w", err)
+	return fmt.Errorf("%s: %w", "mypackage.AnotherAction", err)
 }
 ```
+
+The first argument is the *operation name*: the package path relative to the module root, followed by the method name.
 
 You can then use these generated functions in your methods:
 
@@ -92,14 +94,24 @@ func (s *MyService) DoSomething() error {
 
 ### Customization with `+generr` Comments
 
-You can customize the generated error functions by adding `+generr` comments to your method's documentation.
+You can customize the generated error functions by adding `+generr` comments to your method's documentation. Options are written as a comma-separated list of `key=value` pairs:
+
+```go
+// +generr:format=%s(%s): %w,params=string(id);error,namesuffix=forID
+```
+
+A value runs up to the next comma. To use a comma in a value, write it as a quoted Go string: `format="%s: a, b: %w"`.
+
+`generr` checks the options when it runs. If an option is unknown, malformed, or does not fit the format, it reports the method and exits with an error, and no file is written.
 
 #### `format` Option
 
 Change the format string used in `fmt.Errorf`.
 
+The operation name is always passed as the first argument, so the format must start by consuming it with `%s`. The remaining verbs must match the parameters, in order.
+
 ```go
-// +generr format="failed to process request: %w"
+// +generr:format=%s: failed to process request: %w
 func (s *MyService) ProcessRequest() error {
     // ...
 }
@@ -108,16 +120,16 @@ func (s *MyService) ProcessRequest() error {
 Generated function:
 ```go
 func (*MyService) errProcessRequest(err error) error {
-	return fmt.Errorf("failed to process request: %w", err)
+	return fmt.Errorf("%s: failed to process request: %w", "mypackage.ProcessRequest", err)
 }
 ```
 
 #### `namesuffix` Option
 
-Add a suffix to the generated function name.
+Add a suffix to the generated function name. Its first letter is upper-cased.
 
 ```go
-// +generr namesuffix=WithContext
+// +generr:namesuffix=WithContext
 func (s *MyService) PerformTask() error {
     // ...
 }
@@ -126,17 +138,18 @@ func (s *MyService) PerformTask() error {
 Generated function:
 ```go
 func (*MyService) errPerformTaskWithContext(err error) error {
-	return fmt.Errorf("mypackage.PerformTask: %w", err)
+	return fmt.Errorf("%s: %w", "mypackage.PerformTask", err)
 }
 ```
 
 #### `params` Option
 
-Define custom parameters for the generated error function. The `error` parameter is automatically added if not specified.
-You can define named parameters by putting the name in parentheses `(name)`.
+Define the parameters of the generated error function, as a semicolon-separated list of types. This list replaces the default `err error` parameter, so include `error` if you still want one.
+
+Name a parameter by putting the name in parentheses after the type: `string(id)`. Unnamed parameters are called `err` when their type is `error`, and `p0`, `p1`, ... (by position) otherwise.
 
 ```go
-// +generr params="string(id);error"
+// +generr:params=string(id);error
 func (s *MyService) DeleteItem(itemId string) error {
     // ...
 }
@@ -145,16 +158,25 @@ func (s *MyService) DeleteItem(itemId string) error {
 Generated function:
 ```go
 func (*MyService) errDeleteItem(id string, err error) error {
-	return fmt.Errorf("mypackage.DeleteItem: %s: %w", id, err)
+	return fmt.Errorf("%s(%v): %w", "mypackage.DeleteItem", id, err)
 }
 ```
 
-Multiple options can be combined using commas:
+Without a `format`, one is derived from the parameters: the operation name, the non-error parameters in parentheses separated by `/`, then each error as `: %w`.
+
+Combine `params` with `format` to control the message:
 
 ```go
-// +generr format="user %s not found: %w",params="string(userID);error"
+// +generr:format=%s: user %s not found: %w,params=string(userID);error
 func (s *MyService) GetUser(userID string) error {
     // ...
+}
+```
+
+Generated function:
+```go
+func (*MyService) errGetUser(userID string, err error) error {
+	return fmt.Errorf("%s: user %s not found: %w", "mypackage.GetUser", userID, err)
 }
 ```
 
@@ -164,8 +186,8 @@ You can define multiple `+generr` lines for a single method, each generating a d
 
 ```go
 // +generr
-// +generr namesuffix=NotFound,format="item not found: %w"
-// +generr namesuffix=Invalid,params="string(reason);error",format="item is invalid (%s): %w"
+// +generr:namesuffix=NotFound,format=%s: item not found: %w
+// +generr:namesuffix=Invalid,params=string(reason);error,format=%s: item is invalid (%s): %w
 func (s *MyService) GetItem() error {
     // ...
 }
@@ -176,9 +198,11 @@ This will generate:
 - `errGetItemNotFound(err error)`
 - `errGetItemInvalid(reason string, err error)`
 
+A line after the first that has no `namesuffix` gets its position as the suffix: `errGetItem1`, `errGetItem2`, ...
+
 #### `skip` Option
 
-To explicitly prevent `generr` from generating an error function for a specific method, use `+generr:skip`.
+To explicitly prevent `generr` from generating an error function for a specific method, use `+generr:skip`. It must be the method's only `+generr` line.
 
 ```go
 // +generr:skip
@@ -222,6 +246,14 @@ func (s *MyService) InternalHelper() error {
 ```bash
 make install
 ```
+
+### Testing
+
+```bash
+go test ./...
+```
+
+The expected output of the generator is `testdata/svc/service_generr.go`. After an intended change to the generated code, update it with `go test -update .`.
 
 ### Linting and Formatting
 
