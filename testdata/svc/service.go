@@ -1,6 +1,11 @@
 // Package svc is the input of the generr golden test.
 package svc
 
+import (
+	stdctx "context"
+	"time"
+)
+
 // Service is the type the error functions are generated for.
 type Service struct{}
 
@@ -54,4 +59,20 @@ func (s *Service) Multiple() error { return nil }
 // +generr:skip
 func (s *Service) Skipped() error { return nil }
 
+// Qualified uses parameter types of other packages, which the generated file
+// has to import: one by its own name and one by the alias this file gives it.
+//
+// +generr:params=stdctx.Context(ctx);[]time.Duration(delays);error
+func (s *Service) Qualified(ctx stdctx.Context, delays []time.Duration) error { return nil }
+
+// Mentioned is not skipped: a marker only counts at the start of a line, and
+// this one, +generr:skip, is in the middle of a sentence.
+func (s *Service) Mentioned() error { return nil }
+
 func (s *Service) unexported() error { return nil }
+
+// errand starts with "err" but is not an error function.
+func (s *Service) errand() error { return nil }
+
+// errCustom is a hand-written error function, so it gets none of its own.
+func (s *Service) errCustom(err error) error { return err }

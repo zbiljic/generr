@@ -2,7 +2,11 @@
 
 package svc
 
-import "fmt"
+import (
+	stdctx "context"
+	"fmt"
+	"time"
+)
 
 // errDefault is an error function generated for Service.Default
 func (*Service) errDefault(err error) error {
@@ -59,7 +63,37 @@ func (*Service) errMultiple2(ids []string, err error) error {
 	return fmt.Errorf("%s: invalid %v: %w", "svc.Multiple", ids, err)
 }
 
+// errQualified is an error function generated for Service.Qualified
+func (*Service) errQualified(ctx stdctx.Context, delays []time.Duration, err error) error {
+	return fmt.Errorf("%s(%v/%v): %w", "svc.Qualified", ctx, delays, err)
+}
+
+// errMentioned is an error function generated for Service.Mentioned
+func (*Service) errMentioned(err error) error {
+	return fmt.Errorf("%s: %w", "svc.Mentioned", err)
+}
+
 // errUnexported is an error function generated for Service.unexported
 func (*Service) errUnexported(err error) error {
 	return fmt.Errorf("%s: %w", "svc.unexported", err)
+}
+
+// errErrand is an error function generated for Service.errand
+func (*Service) errErrand(err error) error {
+	return fmt.Errorf("%s: %w", "svc.errand", err)
+}
+
+// errGet is an error function generated for Cache.Get
+func (*Cache[_, _]) errGet(err error) error {
+	return fmt.Errorf("%s: %w", "svc.Get", err)
+}
+
+// errLen is an error function generated for Cache.Len
+func (*Cache[_, _]) errLen(err error) error {
+	return fmt.Errorf("%s: %w", "svc.Len", err)
+}
+
+// errExpire is an error function generated for Cache.Expire
+func (*Cache[_, _]) errExpire(ttl time.Duration, err error) error {
+	return fmt.Errorf("%s(%v): %w", "svc.Expire", ttl, err)
 }

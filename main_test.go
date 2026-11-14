@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"flag"
+	"go/ast"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,9 +14,9 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files in testdata")
 
-// generateTestdata runs the generator for the Service type of a testdata
+// generateTestdata runs the generator for the named types of a testdata
 // package.
-func generateTestdata(t *testing.T, pkg string, exportedOnly bool) ([]byte, error) {
+func generateTestdata(t *testing.T, pkg string, exportedOnly bool, typeNames ...string) ([]byte, error) {
 	t.Helper()
 
 	g := Generator{
@@ -27,14 +28,14 @@ func generateTestdata(t *testing.T, pkg string, exportedOnly bool) ([]byte, erro
 		t.Fatalf("parsePackage: %v", err)
 	}
 
-	return g.run([]string{"Service"})
+	return g.run(typeNames)
 }
 
 // TestGolden compares the generated file with the one committed in testdata.
 // That file is part of the testdata package, so vetting the package also vets
 // the generated code.
 func TestGolden(t *testing.T) {
-	got, err := generateTestdata(t, "svc", false)
+	got, err := generateTestdata(t, "svc", false, "Service", "Cache")
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -61,7 +62,7 @@ func TestGolden(t *testing.T) {
 }
 
 func TestExportedOnly(t *testing.T) {
-	got, err := generateTestdata(t, "svc", true)
+	got, err := generateTestdata(t, "svc", true, "Service")
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -73,16 +74,159 @@ func TestExportedOnly(t *testing.T) {
 	}
 }
 
-// TestRejectedAnnotation checks that a bad annotation fails the whole run,
-// naming the method, instead of producing a file.
-func TestRejectedAnnotation(t *testing.T) {
-	got, err := generateTestdata(t, "bad", false)
-	if err == nil {
-		t.Fatalf("run succeeded, want an error; output:\n%s", got)
+// TestRejected checks that input which cannot be generated for fails the
+// whole run, naming the method, instead of producing a file.
+func TestRejected(t *testing.T) {
+	tests := []struct {
+		typeName string
+		wantErr  []string
+	}{
+		{"Service", []string{"Service.Broken: +generr line 1", "has 1 verbs but gets 2 arguments"}},
+		{"Collide", []string{"Collide.get", "function errGet is already generated for Collide.Get"}},
+		{"Unimported", []string{"Unimported.Wait", "no file of package bad imports a package named time"}},
 	}
-	for _, want := range []string{"Service.Broken", "has 1 verbs but gets 2 arguments"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not mention %q", err, want)
+
+	for _, tt := range tests {
+		t.Run(tt.typeName, func(t *testing.T) {
+			got, err := generateTestdata(t, "bad", false, tt.typeName)
+			if err == nil {
+				t.Fatalf("run succeeded, want an error; output:\n%s", got)
+			}
+			for _, want := range tt.wantErr {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not mention %q", err, want)
+				}
+			}
+		})
+	}
+}
+
+// TestFileArguments checks that naming the files of a package gives the same
+// result as naming its directory.
+func TestFileArguments(t *testing.T) {
+	want, err := generateTestdata(t, "svc", false, "Service", "Cache")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	g := Generator{trimPrefix: "testdata", logf: t.Logf}
+	files := []string{"testdata/svc/service.go", "testdata/svc/cache.go"}
+	if err := g.parsePackage(files, nil); err != nil {
+		t.Fatalf("parsePackage: %v", err)
+	}
+	got, err := g.run([]string{"Service", "Cache"})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	if !bytes.Equal(got, want) {
+		t.Errorf("output for file arguments differs from the output for the directory:\n%s", got)
+	}
+}
+
+func TestNamespace(t *testing.T) {
+	tests := []struct {
+		name       string
+		pkgPath    string
+		pkgName    string
+		modPath    string
+		trimPrefix string
+		want       string
+	}{
+		{"package in module", "example.com/mod/internal/svc", "svc", "example.com/mod", "", "internal/svc"},
+		{"trim prefix", "example.com/mod/internal/svc", "svc", "example.com/mod", "internal", "svc"},
+		{"trim prefix with slash", "example.com/mod/internal/svc", "svc", "example.com/mod", "internal/", "svc"},
+		{"trim prefix that does not match", "example.com/mod/internal/svc", "svc", "example.com/mod", "pkg", "internal/svc"},
+		{"module root", "example.com/mod", "mod", "example.com/mod", "", "mod"},
+		{"module root, name differs from path", "example.com/go-mod", "mod", "example.com/go-mod", "", "mod"},
+		{"trim prefix removes everything", "example.com/mod/svc", "svc", "example.com/mod", "svc", "svc"},
+		{"unknown module", "command-line-arguments", "svc", "", "", "svc"},
+		{"path outside module", "example.com/modern/svc", "svc", "example.com/mod", "", "svc"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := namespace(tt.pkgPath, tt.pkgName, tt.modPath, tt.trimPrefix)
+			if got != tt.want {
+				t.Errorf("namespace(%q, %q, %q, %q) = %q, want %q",
+					tt.pkgPath, tt.pkgName, tt.modPath, tt.trimPrefix, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsErrorFunc(t *testing.T) {
+	tests := map[string]bool{
+		"errGet":   true,
+		"err":      true,
+		"err_get":  true,
+		"err2":     true,
+		"errand":   false,
+		"errorf":   false,
+		"Get":      false,
+		"ErrGet":   false,
+		"erGet":    false,
+		"getError": false,
+	}
+
+	for name, want := range tests {
+		if got := isErrorFunc(name); got != want {
+			t.Errorf("isErrorFunc(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestAnnotations(t *testing.T) {
+	tests := []struct {
+		name string
+		doc  []string
+		want []string
+	}{
+		{"no marker", []string{"// Get returns the item."}, nil},
+		{"bare marker", []string{"// +generr"}, []string{""}},
+		{"colon", []string{"// +generr:skip"}, []string{"skip"}},
+		{"space", []string{"// +generr format=%s: %w"}, []string{"format=%s: %w"}},
+		{"no space after slashes", []string{"//+generr:skip"}, []string{"skip"}},
+		{"several lines", []string{"// Get.", "//", "// +generr", "// +generr:namesuffix=A"}, []string{"", "namesuffix=A"}},
+		{"marker in the middle of a line", []string{"// Get, see +generr:skip for details."}, nil},
+		{"longer word", []string{"// +generrate"}, nil},
+		{"block comment", []string{"/* +generr:skip */"}, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := &ast.CommentGroup{}
+			for _, text := range tt.doc {
+				doc.List = append(doc.List, &ast.Comment{Text: text})
+			}
+			if got := annotations(doc); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("annotations(%q) = %q, want %q", tt.doc, got, tt.want)
+			}
+		})
+	}
+
+	if got := annotations(nil); got != nil {
+		t.Errorf("annotations(nil) = %q, want nil", got)
+	}
+}
+
+func TestQualifiers(t *testing.T) {
+	tests := map[string][]string{
+		"string":                         nil,
+		"error":                          nil,
+		"time.Duration":                  {"time"},
+		"[]time.Duration":                {"time"},
+		"*url.URL":                       {"url"},
+		"map[netip.Addr][]time.Duration": {"netip", "time"},
+		"func(context.Context) error":    {"context"},
+		"...time.Duration":               {"time"},
+		"chan<- time.Time":               {"time"},
+		"time.Duration; time.Time":       nil, // not a type
+	}
+
+	for typ, want := range tests {
+		if got := qualifiers(typ); !reflect.DeepEqual(got, want) {
+			t.Errorf("qualifiers(%q) = %q, want %q", typ, got, want)
 		}
 	}
 }
