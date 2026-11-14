@@ -258,7 +258,7 @@ make install
 ### Testing
 
 ```bash
-go test ./...
+make test
 ```
 
 The expected output of the generator is `testdata/svc/service_generr.go`. After an intended change to the generated code, update it with `go test -update .`.

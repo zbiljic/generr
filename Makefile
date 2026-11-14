@@ -73,6 +73,11 @@ lint: ## Lint the source code
 	@echo "==> Linting source code..."
 	@mise x -- golangci-lint run --config=.golangci.yml --fix
 
+.PHONY: test
+test: ## Run the tests
+	@echo "==> Running tests..."
+	@go test ./...
+
 .PHONY: check-mod
 check-mod:
 	@echo "==> Checking Go mod..."
@@ -106,7 +111,7 @@ install-$(PROJECT_NAME):
 	fi;
 
 .PHONY: pre-commit
-pre-commit: gofmt lint check-mod
+pre-commit: gofmt lint test check-mod
 
 .PHONY: clean
 clean: ## Remove build artifacts
