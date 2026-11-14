@@ -65,7 +65,7 @@ tidy: go-mod-tidy
 .PHONY: gofmt
 gofmt: tools
 gofmt: ## Format Go code
-	@mise x -- gofumpt -extra -l -w .
+	@mise x -- gofumpt -extra=group_params,clothe_returns -l -w .
 
 .PHONY: lint
 lint: tools
