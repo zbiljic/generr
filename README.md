@@ -79,7 +79,13 @@ func (*MyService) errAnotherAction(err error) error {
 }
 ```
 
-The first argument is the *operation name*: the package path relative to the module root, followed by the method name.
+The first argument is the *operation name*: the package path relative to the module root, followed by the method name. For the package at the module root, it is the package name.
+
+Generic types are supported; their error functions get a receiver like `(*Cache[_, _])`.
+
+Methods that already look like error functions, named `err` followed by anything but a lower-case letter (`errNotFound`), are ignored.
+
+If two error functions of a type would get the same name, such as `errGet` for both `Get` and `get`, `generr` reports it. Rename one with `namesuffix`, or skip one.
 
 You can then use these generated functions in your methods:
 
@@ -94,7 +100,7 @@ func (s *MyService) DoSomething() error {
 
 ### Customization with `+generr` Comments
 
-You can customize the generated error functions by adding `+generr` comments to your method's documentation. Options are written as a comma-separated list of `key=value` pairs:
+You can customize the generated error functions by adding `+generr` comments to your method's documentation. The marker has to start its comment line. Options are written as a comma-separated list of `key=value` pairs:
 
 ```go
 // +generr:format=%s(%s): %w,params=string(id);error,namesuffix=forID
@@ -162,6 +168,8 @@ func (*MyService) errDeleteItem(id string, err error) error {
 }
 ```
 
+A type can come from another package, like `time.Duration(timeout)`. The generated file imports that package the way the file of the method does; if that file does not import it, another file of the package has to.
+
 Without a `format`, one is derived from the parameters: the operation name, the non-error parameters in parentheses separated by `/`, then each error as `: %w`.
 
 Combine `params` with `format` to control the message:
@@ -216,7 +224,7 @@ func (s *MyService) InternalHelper() error {
 
 - `-type <name>`: **(Required)** Comma-separated list of type names for which to generate error functions.
 - `-output <file>`: Output file name. Defaults to `srcdir/<type>_generr.go`.
-- `-trimprefix <prefix>`: Trim the specified `prefix` from the generated constant namespace. This is useful when your module path includes a common prefix that you don't want in the error strings.
+- `-trimprefix <prefix>`: Trim the specified `prefix` from the package path used in operation names. The path is relative to the module root, so the module path itself is never part of it. With `-trimprefix internal`, a method of the package `internal/service` is reported as `service.Method` instead of `internal/service.Method`.
 - `-tags <tags>`: Comma-separated list of build tags to apply when parsing the package.
 - `-exported`: Generate error functions only for exported methods (methods starting with an uppercase letter).
 
@@ -232,8 +240,8 @@ func (s *MyService) InternalHelper() error {
 // Generate with a custom output file name:
 //go:generate generr -type MyService -output errors.go
 
-// Generate and trim a prefix from the module path in the error string:
-//go:generate generr -type MyService -trimprefix github.com/yourorg/yourmodule
+// Generate and trim a prefix from the package path in the error string:
+//go:generate generr -type MyService -trimprefix internal
 
 // Generate only for exported methods:
 //go:generate generr -type MyService -exported
